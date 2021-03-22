@@ -438,6 +438,36 @@ int mov_reader_read(struct mov_reader_t* reader, void* buffer, size_t bytes, mov
 	return 1;
 }
 
+int mov_reader_read2(mov_reader_t* reader, mov_onalloc onalloc,  mov_reader_onread onread, void* param){
+    struct mov_track_t* track;
+    struct mov_sample_t* sample;
+
+    track = mov_reader_next(reader);
+    if (NULL == track || 0 == track->mdhd.timescale)
+    {
+        return 0; // EOF
+    }
+
+    assert(track->sample_offset < track->sample_count);
+    sample = &track->samples[track->sample_offset];
+
+    void *buffer = onalloc(param,sample->bytes);
+    if (!buffer)
+        return ENOMEM;
+
+    mov_buffer_seek(&reader->mov.io, sample->offset);
+    mov_buffer_read(&reader->mov.io, buffer, sample->bytes);
+    if (mov_buffer_error(&reader->mov.io))
+    {
+        return mov_buffer_error(&reader->mov.io);
+    }
+
+    track->sample_offset++; //mark as read
+    assert(sample->sample_description_index > 0);
+    onread(param, track->tkhd.track_ID, /*sample->sample_description_index-1,*/ buffer, sample->bytes, sample->pts * 1000 / track->mdhd.timescale, sample->dts * 1000 / track->mdhd.timescale, sample->flags);
+    return 1;
+}
+
 int mov_reader_seek(struct mov_reader_t* reader, int64_t* timestamp)
 {
 	int i;
